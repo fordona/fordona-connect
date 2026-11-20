@@ -65,6 +65,8 @@ def create_app(
             )
             for warning in settings.access_boundary_warnings:
                 log.warning("access_boundary_not_enforced", detail=warning)
+            for warning in settings.platform_event_warnings:
+                log.warning("platform_events_disabled", detail=warning)
             yield
         log.info("shutdown")
 

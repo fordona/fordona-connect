@@ -29,7 +29,12 @@ from fordona_connect.learning_journey.errors import (
     ValidationError,
 )
 from fordona_connect.learning_journey.service import LearningJourneyService
-from tests.learning_journey.fakes import FakeLearningJourneyRepository, FakeSubscriptions
+from tests.learning_journey.fakes import (
+    FakeAccess,
+    FakeLearningJourneyRepository,
+    FakeMockExams,
+    FakeSubscriptions,
+)
 
 USER = "kp_test_learner"
 CHALLENGE = "ch_028"  # ms_008 — a paid milestone; most tests assume an active subscription
@@ -52,7 +57,13 @@ def engine() -> FakeSubscriptions:
 def service(
     repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
 ) -> LearningJourneyService:
-    return LearningJourneyService(repo, repo, engine)  # type: ignore[arg-type]
+    return LearningJourneyService(
+        repo,
+        repo,
+        engine,
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )  # type: ignore[arg-type]
 
 
 def _key() -> str:
@@ -153,7 +164,13 @@ async def test_journey_embeds_each_milestones_challenges_exactly_as_milestone_de
 async def test_journey_challenges_of_a_paid_milestone_are_paywalled_for_free_user(
     repo: FakeLearningJourneyRepository,
 ) -> None:
-    service = LearningJourneyService(repo, repo, FakeSubscriptions(subscribed=False))
+    service = LearningJourneyService(
+        repo,
+        repo,
+        FakeSubscriptions(subscribed=False),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )
 
     out = await service.get_learning_journey(USER)
 
@@ -470,7 +487,13 @@ async def test_resume_preserves_the_originally_frozen_option_order(
 async def test_unsubscribed_user_can_view_the_free_milestone(
     repo: FakeLearningJourneyRepository,
 ) -> None:
-    service = LearningJourneyService(repo, repo, FakeSubscriptions(subscribed=False))
+    service = LearningJourneyService(
+        repo,
+        repo,
+        FakeSubscriptions(subscribed=False),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )
 
     out = await service.get_challenge_detail(USER, FREE_CHALLENGE)
 
@@ -480,7 +503,13 @@ async def test_unsubscribed_user_can_view_the_free_milestone(
 async def test_unsubscribed_user_is_blocked_from_a_paid_challenge(
     repo: FakeLearningJourneyRepository,
 ) -> None:
-    service = LearningJourneyService(repo, repo, FakeSubscriptions(subscribed=False))
+    service = LearningJourneyService(
+        repo,
+        repo,
+        FakeSubscriptions(subscribed=False),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )
 
     with pytest.raises(SubscriptionRequiredError):
         await service.get_challenge_detail(USER, CHALLENGE)
@@ -489,7 +518,13 @@ async def test_unsubscribed_user_is_blocked_from_a_paid_challenge(
 async def test_unsubscribed_user_cannot_start_a_paid_attempt(
     repo: FakeLearningJourneyRepository,
 ) -> None:
-    service = LearningJourneyService(repo, repo, FakeSubscriptions(subscribed=False))
+    service = LearningJourneyService(
+        repo,
+        repo,
+        FakeSubscriptions(subscribed=False),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )
 
     with pytest.raises(SubscriptionRequiredError):
         await service.start_attempt(
@@ -508,7 +543,13 @@ async def test_engine_failure_fails_closed_not_open(repo: FakeLearningJourneyRep
 
             raise UpstreamUnavailableError()
 
-    service = LearningJourneyService(repo, repo, BrokenEngineClient())  # type: ignore[arg-type]
+    service = LearningJourneyService(
+        repo,
+        repo,
+        BrokenEngineClient(),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )  # type: ignore[arg-type]
 
     with pytest.raises(SubscriptionRequiredError):
         await service.get_challenge_detail(USER, CHALLENGE)
@@ -517,7 +558,13 @@ async def test_engine_failure_fails_closed_not_open(repo: FakeLearningJourneyRep
 async def test_learning_journey_listing_marks_paid_milestones_locked_for_free_user(
     repo: FakeLearningJourneyRepository,
 ) -> None:
-    service = LearningJourneyService(repo, repo, FakeSubscriptions(subscribed=False))
+    service = LearningJourneyService(
+        repo,
+        repo,
+        FakeSubscriptions(subscribed=False),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )
 
     out = await service.get_learning_journey(USER)
 
@@ -531,7 +578,13 @@ async def test_learning_journey_listing_marks_paid_milestones_locked_for_free_us
 async def test_subscribed_user_sees_every_milestone_unlocked_by_entitlement(
     repo: FakeLearningJourneyRepository,
 ) -> None:
-    service = LearningJourneyService(repo, repo, FakeSubscriptions(subscribed=True))
+    service = LearningJourneyService(
+        repo,
+        repo,
+        FakeSubscriptions(subscribed=True),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )
 
     out = await service.get_learning_journey(USER)
 
@@ -566,7 +619,13 @@ async def test_challenge_detail_exposes_content_ready_for_a_ready_challenge(
 async def test_challenge_detail_exposes_content_ready_false_for_missing_media(
     repo: FakeLearningJourneyRepository,
 ) -> None:
-    service = LearningJourneyService(repo, repo, FakeSubscriptions(subscribed=True))
+    service = LearningJourneyService(
+        repo,
+        repo,
+        FakeSubscriptions(subscribed=True),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+    )
 
     out = await service.get_challenge_detail(USER, FREE_CHALLENGE)
 
@@ -582,7 +641,14 @@ _FIXED_SUNDAY = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
 def home_service(
     repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
 ) -> LearningJourneyService:
-    return LearningJourneyService(repo, repo, engine, now_fn=lambda: _FIXED_SUNDAY)  # type: ignore[arg-type]
+    return LearningJourneyService(
+        repo,
+        repo,
+        engine,
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
+        now_fn=lambda: _FIXED_SUNDAY,
+    )  # type: ignore[arg-type]
 
 
 async def test_readiness_with_no_activity_is_zero(
@@ -593,7 +659,9 @@ async def test_readiness_with_no_activity_is_zero(
     assert out.percentage == 0.0
     assert out.completed_challenges == 0
     assert out.total_challenges == 39
-    assert out.best_mock_result is None  # always null — no mock-exam integration
+    assert out.best_mock_result is None  # no mock exam sat yet
+    assert out.journey.percentage == 0.0
+    assert out.mock_exams.sittings_counted == 0
 
 
 async def test_readiness_reflects_a_completed_challenge(
@@ -608,7 +676,9 @@ async def test_readiness_reflects_a_completed_challenge(
     out = await home_service.get_readiness(USER)
 
     assert out.completed_challenges == 1
-    assert round(out.percentage, 2) == round(1 / 39 * 100, 2)
+    # One challenge of 39 at its best score of 100 %; journey weighs 40 %.
+    assert out.journey.percentage == round(100 / 39, 2)
+    assert out.percentage == round(0.4 * round(100 / 39, 2), 2)
 
 
 async def test_home_with_no_activity_points_at_the_very_first_challenge(
@@ -623,7 +693,7 @@ async def test_home_with_no_activity_points_at_the_very_first_challenge(
     assert len(out.week.days) == 7
     assert out.week.days[0].date == "2026-11-08"  # the fixed date is itself a Sunday
     assert out.week.days[0].status == "today"
-    assert out.tabs.mock_exams.is_locked is True
+    assert out.tabs.mock_exams.is_locked is False  # FakeAccess: mock exams are published
     assert out.tabs.learning_path.is_locked is False
     assert out.continue_ is not None
     assert out.continue_.challenge_id == "ch_001"  # the real first challenge, content gap and all
@@ -668,3 +738,120 @@ async def test_home_invalid_timezone_falls_back_to_utc(
     out = await home_service.get_home(USER, "Not/A_Real_Zone")
 
     assert out.week.timezone == "UTC"
+
+
+async def test_home_locks_the_mock_exams_tab_until_one_is_published(
+    repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
+) -> None:
+    service = LearningJourneyService(
+        repo,
+        repo,
+        engine,
+        access=FakeAccess(available=False),
+        mock_exams=FakeMockExams(),
+        now_fn=lambda: _FIXED_SUNDAY,
+    )
+
+    out = await service.get_home(USER, "UTC")
+
+    assert out.tabs.mock_exams.is_locked is True
+    assert out.tabs.mock_exams.reason == "NOT_AVAILABLE"
+    assert out.access.mock_exams.available is False
+
+
+async def test_home_access_shows_a_free_learners_remaining_mock_exam_attempts(
+    repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
+) -> None:
+    service = LearningJourneyService(
+        repo,
+        repo,
+        engine,
+        access=FakeAccess(subscribed=False, remaining=1),
+        mock_exams=FakeMockExams(),
+        now_fn=lambda: _FIXED_SUNDAY,
+    )
+
+    out = await service.get_home(USER, "UTC")
+
+    assert out.access.level == "FREE"
+    assert out.access.mock_exams.free_attempts_limit == 3
+    assert out.access.mock_exams.free_attempts_remaining == 1
+
+
+async def test_home_access_shows_no_limit_for_a_subscribed_learner(
+    home_service: LearningJourneyService,
+) -> None:
+    out = await home_service.get_home(USER, "UTC")
+
+    assert out.access.level == "SUBSCRIBED"
+    assert out.access.mock_exams.free_attempts_remaining is None
+
+
+def _readiness_service(
+    repo: FakeLearningJourneyRepository, engine: FakeSubscriptions, scores: list[int]
+) -> LearningJourneyService:
+    return LearningJourneyService(
+        repo,
+        repo,
+        engine,
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(scores),
+        now_fn=lambda: _FIXED_SUNDAY,
+    )
+
+
+async def test_readiness_weighs_mock_exams_at_sixty_percent(
+    repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
+) -> None:
+    service = _readiness_service(repo, engine, [90, 60, 75])
+
+    out = await service.get_readiness(USER)
+
+    assert out.mock_exams.percentage == 75.0
+    assert out.mock_exams.sittings_counted == 3
+    assert out.mock_exam_weight == 0.6
+    assert out.percentage == 45.0  # 0.4 x 0 journey + 0.6 x 75
+
+
+async def test_readiness_counts_a_missing_mock_exam_sitting_as_zero(
+    repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
+) -> None:
+    service = _readiness_service(repo, engine, [90])
+
+    out = await service.get_readiness(USER)
+
+    assert out.mock_exams.percentage == 30.0
+    assert out.mock_exams.sittings_counted == 1
+    assert out.mock_exams.sittings_needed == 3
+
+
+async def test_readiness_uses_only_the_three_most_recent_mock_exams(
+    repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
+) -> None:
+    service = _readiness_service(repo, engine, [60, 60, 60, 100])  # newest first
+
+    out = await service.get_readiness(USER)
+
+    assert out.mock_exams.percentage == 60.0
+
+
+async def test_readiness_reports_the_best_mock_exam_sitting(
+    repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
+) -> None:
+    service = _readiness_service(repo, engine, [60, 80, 100, 70])
+
+    out = await service.get_readiness(USER)
+
+    assert out.best_mock_result is not None
+    assert out.best_mock_result.correct_count == 65
+    assert out.best_mock_result.passed is True
+
+
+async def test_home_shows_the_same_readiness_as_the_readiness_endpoint(
+    repo: FakeLearningJourneyRepository, engine: FakeSubscriptions
+) -> None:
+    service = _readiness_service(repo, engine, [80])
+
+    home = await service.get_home(USER, "UTC")
+
+    assert home.readiness == await service.get_readiness(USER)

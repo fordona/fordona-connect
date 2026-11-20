@@ -33,6 +33,7 @@ from fordona_connect.learning_journey.repository import LearningJourneyRepositor
 from fordona_connect.learning_journey.service import LearningJourneyService
 from fordona_connect.services.body_cache import BodyCache
 from tests.learning_content.boost_dev import BASE, BoostDev
+from tests.learning_journey.fakes import FakeAccess, FakeMockExams
 
 pytestmark = pytest.mark.integration
 
@@ -128,6 +129,8 @@ async def test_journey_3_comes_from_boost_dev(world) -> None:  # type: ignore[no
         LearningJourneyRepository(sessions),
         BoostJourneyContent(sessions, snapshots, bodies, locale="en-GB"),
         Subscribed(),
+        access=FakeAccess(),
+        mock_exams=FakeMockExams(),
     )
 
     journey = await journeys.get_learning_journey(LEARNER)

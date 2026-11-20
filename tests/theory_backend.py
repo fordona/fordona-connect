@@ -16,6 +16,9 @@ from fordona_connect.learning.theory_models import (
     TheoryLearningPath,
     TheoryLessonState,
     TheoryMockExamDetail,
+    TheoryMockExamHistoryEntry,
+    TheoryMockExamResult,
+    TheoryMockExamSession,
     TheoryMockExamSummary,
     TheoryReadiness,
 )
@@ -128,3 +131,31 @@ class FakeTheoryBackend:
             timezone=timezone,
         )
         return TheoryAttemptPhaseCompletion.model_validate(payload)
+
+    async def start_mock_exam(self, mock_exam_id: str, request_id: str) -> TheoryMockExamSession:
+        payload = self._respond("start_mock_exam", mock_exam_id, request_id)
+        return TheoryMockExamSession.model_validate(payload)
+
+    async def get_mock_exam_session(self, session_id: str) -> TheoryMockExamSession:
+        payload = self._respond("get_mock_exam_session", session_id)
+        return TheoryMockExamSession.model_validate(payload)
+
+    async def submit_mock_exam(
+        self, session_id: str, *, answers: dict[int, str], accept_language: str
+    ) -> TheoryMockExamResult:
+        payload = self._respond(
+            "submit_mock_exam", session_id, answers=answers, accept_language=accept_language
+        )
+        return TheoryMockExamResult.model_validate(payload)
+
+    async def get_mock_exam_result(
+        self, session_id: str, *, accept_language: str
+    ) -> TheoryMockExamResult:
+        payload = self._respond("get_mock_exam_result", session_id, accept_language=accept_language)
+        return TheoryMockExamResult.model_validate(payload)
+
+    async def list_mock_exam_history(
+        self, *, accept_language: str
+    ) -> list[TheoryMockExamHistoryEntry]:
+        payload = self._respond("list_mock_exam_history", accept_language=accept_language)
+        return [TheoryMockExamHistoryEntry.model_validate(entry) for entry in payload]

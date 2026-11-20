@@ -29,6 +29,7 @@ from fordona_connect.core.errors import AppError
 from fordona_connect.core.logging import get_logger
 from fordona_connect.db.models import Base
 from fordona_connect.learning.attempts.models import AttemptItem, LessonAttempt, Mistake
+from fordona_connect.learning.mock_exam_sessions.models import MockExamItem, MockExamSession
 from fordona_connect.learning.progress.models import (
     LearnerActivityDay,
     LearnerActivityLesson,
@@ -92,7 +93,9 @@ class PlatformClient:
                 f"/internal/learning/v1/learners/{learner_id}"
             )
         except AppError as exc:
-            log.warning("learner_context_unavailable_failing_closed", error=repr(exc))
+            # Error, not warning: every learner looks unsubscribed until this recovers, so
+            # paying learners are locked out. Alert on this event.
+            log.error("learner_context_unavailable_failing_closed", error=repr(exc))
             return LearnerContext(user_id=None, first_name="", last_name="", subscribed=False)
         data = response.data or {}
         context = LearnerContext(
@@ -135,6 +138,8 @@ async def forget_learner_data(session: AsyncSession, learner_id: str) -> None:
         Mistake,
         AttemptItem,
         LessonAttempt,
+        MockExamItem,
+        MockExamSession,
     ):
         await session.execute(delete(table).where(table.learner_id == learner_id))
     for journey_table in (

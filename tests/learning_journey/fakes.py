@@ -16,6 +16,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from fordona_connect.learning.theory_models import (
+    TheoryAccess,
+    TheoryMockExamAccess,
+    TheoryMockExamResults,
+    TheoryMockExamScore,
+)
 from fordona_connect.learning_journey.content import (
     ChallengeContent,
     JourneyContent,
@@ -357,3 +363,44 @@ class FakeSubscriptions:
     async def is_subscribed(self, learner_id: str) -> bool:
         self.calls.append(learner_id)
         return self.subscribed
+
+
+class FakeAccess:
+    """An ``AccessSource``: subscribed, with mock exams published, unless told otherwise."""
+
+    def __init__(
+        self, *, subscribed: bool = True, available: bool = True, remaining: int = 3
+    ) -> None:
+        self.subscribed = subscribed
+        self.available = available
+        self.remaining = remaining
+
+    async def access(self, learner_id: str) -> TheoryAccess:
+        return TheoryAccess(
+            level="SUBSCRIBED" if self.subscribed else "FREE",
+            mock_exams=TheoryMockExamAccess(
+                available=self.available,
+                free_attempts_limit=3,
+                free_attempts_remaining=None if self.subscribed else self.remaining,
+            ),
+        )
+
+
+class FakeMockExams:
+    """A ``MockExamResultsSource``: completed sittings' scores, newest first."""
+
+    def __init__(self, scores: Sequence[int] = ()) -> None:
+        self.scores = list(scores)
+
+    async def results(self, learner_id: str, *, recent: int) -> TheoryMockExamResults:
+        sittings = [
+            TheoryMockExamScore(
+                score_percent=score,
+                correct_count=score * 65 // 100,
+                total_count=65,
+                passed=score >= 75,
+            )
+            for score in self.scores
+        ]
+        best = max(sittings, key=lambda s: s.score_percent, default=None)
+        return TheoryMockExamResults(recent=sittings[:recent], best=best)

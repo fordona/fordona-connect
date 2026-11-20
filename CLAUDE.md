@@ -10,6 +10,8 @@ The **BFF** (backend for frontend) of the Fordona Theory App.
   `connect_learning` schema, and serves the public API the mobile app calls.
 - **fordona-engine is the platform** (identity, subscriptions, payments). fordona-connect calls it
   (`GET /internal/learning/v1/learners/{kindeSubject}`, the event outbox); it never calls back.
+  Everything the learner learns with (content, attempts, grading, mock exams, journeys, progress)
+  lives here, not in the engine (decision 2026-11-20, `docs/PROGRESS__STATUS.md`).
 - Plan, decisions and phase log: `docs/LEARNING_SERVICE_MIGRATION.md` (it overrides the older
   theory plan wherever they disagree).
 
@@ -101,8 +103,13 @@ counts (`N passed, M skipped`), never "tests pass".
    option, an answer key, or the grading explanation *before* an answer. The grading token and
    `/v1/grading/**` are never reachable from the BFF. Feedback content comes from the engine, after
    an answer.
-2. **The BFF never decides access.** The engine says whether a lesson/unit is locked; the BFF obeys.
-   For a locked lesson the BFF fetches **no** theory or bodies (paid content never leaves the server).
+2. **The engine owns entitlement facts; connect applies the rules.** fordona-engine says whether a
+   learner is subscribed (`GET /internal/learning/v1/learners/{kindeSubject}`, cached, and the
+   `subscription.changed` event). Connect turns that fact into locks and allowances (free unit,
+   free milestone, free mock exam attempts) and shows the result in the home `access` block. It
+   **fails closed**: no answer from the engine means not subscribed. For a locked lesson connect
+   fetches **no** theory or bodies (paid content never leaves the server). Never add a second
+   source of "is this learner subscribed" in connect.
 3. **Never expose question ids, revisions or template ids** in public attempt/item responses (plan
    §7.3). Tests assert this with a recursive key search.
 4. **Only a verified token is forwarded.** `get_current_learner` verifies first, then stores it in

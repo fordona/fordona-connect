@@ -297,3 +297,59 @@ def phase_completion_payload(**overrides: Any) -> dict[str, Any]:
     }
     payload.update(overrides)
     return payload
+
+
+def mock_exam_session_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "sessionId": "33333333-3333-3333-3333-333333333333",
+        "mockExamId": "1",
+        "status": "IN_PROGRESS",
+        "startedAt": "2026-11-20T10:00:00Z",
+        "expiresAt": "2026-11-20T11:00:00Z",
+        "timeLimitSeconds": 3600,
+        "passPercent": 75,
+        "items": [attempt_item_ref_payload(seq=1, phase="EXAM", question_id="100")],
+        "freeAttemptsRemaining": 2,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def mock_exam_result_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "sessionId": "33333333-3333-3333-3333-333333333333",
+        "mockExamId": "1",
+        "status": "COMPLETED",
+        "correctCount": 0,
+        "totalCount": 1,
+        "scorePercent": 0,
+        "passPercent": 75,
+        "passed": False,
+        "timeTakenSeconds": 125,
+        "completedAt": "2026-11-20T10:02:05Z",
+        "items": [
+            {
+                "seq": 1,
+                "questionId": "100",
+                "version": "5",
+                "selectedOptionKey": "b",
+                "correctOptionKey": "a",
+                "correctOptionLabel": "B",
+                "isCorrect": False,
+                "explanation": [{"type": "text", "markdown": "The right-hand rule applies."}],
+            }
+        ],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def access_payload(*, level: str = "FREE", remaining: int | None = 2) -> dict[str, Any]:
+    return {
+        "level": level,
+        "mockExams": {
+            "available": True,
+            "freeAttemptsLimit": 3,
+            "freeAttemptsRemaining": remaining,
+        },
+    }

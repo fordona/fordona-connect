@@ -15,7 +15,12 @@ import pytest
 
 from fordona_connect.learning_journey.service import LearningJourneyService
 from tests.conftest import Harness
-from tests.learning_journey.fakes import FakeLearningJourneyRepository, FakeSubscriptions
+from tests.learning_journey.fakes import (
+    FakeAccess,
+    FakeLearningJourneyRepository,
+    FakeMockExams,
+    FakeSubscriptions,
+)
 
 CHALLENGE = "ch_028"  # ms_008 — a paid milestone; a subscribed fake engine lets it through
 
@@ -25,7 +30,11 @@ async def journey_harness(harness_factory):  # type: ignore[no-untyped-def]
     async with harness_factory() as harness:
         repo = FakeLearningJourneyRepository()
         harness.app.state.services.learning_journey = LearningJourneyService(
-            repo, repo, FakeSubscriptions(subscribed=True)
+            repo,
+            repo,
+            FakeSubscriptions(subscribed=True),
+            access=FakeAccess(),
+            mock_exams=FakeMockExams(),
         )
         yield harness
 
@@ -196,4 +205,12 @@ async def test_home_endpoint(journey_harness: Harness) -> None:
     assert len(body["data"]["week"]["days"]) == 7
     assert body["data"]["week"]["timezone"] == "Europe/Stockholm"
     assert "continue" in body["data"]  # the Python-keyword field serializes by its alias
-    assert body["data"]["tabs"]["mock_exams"]["is_locked"] is True
+    assert body["data"]["tabs"]["mock_exams"]["is_locked"] is False
+    assert body["data"]["access"] == {
+        "level": "SUBSCRIBED",
+        "mock_exams": {
+            "available": True,
+            "free_attempts_limit": 3,
+            "free_attempts_remaining": None,
+        },
+    }

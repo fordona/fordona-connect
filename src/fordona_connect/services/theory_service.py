@@ -30,6 +30,8 @@ from fordona_connect.core.errors import (
 from fordona_connect.learning.theory_models import (
     TheoryAttempt,
     TheoryAttemptItemRef,
+    TheoryMockExamResult,
+    TheoryMockExamSession,
 )
 from fordona_connect.schemas.theory import (
     AttemptOut,
@@ -39,6 +41,9 @@ from fordona_connect.schemas.theory import (
     LessonDetailOut,
     LessonPhaseCompletionOut,
     MockExamDetailOut,
+    MockExamHistoryEntryOut,
+    MockExamResultOut,
+    MockExamSessionOut,
     MockExamSummaryOut,
     ReadinessOut,
     ResponseFeedbackOut,
@@ -117,6 +122,67 @@ class TheoryService:
             )
         questions = mappers.hydrate_mock_exam_questions(exam.items, found, self._resolver)
         return mappers.map_mock_exam_detail(exam, questions)
+
+    # --- Mock exam sessions --------------------------------------------------------
+
+    async def start_mock_exam(
+        self, mock_exam_id: str, *, request_id: UUID, locale: str
+    ) -> MockExamSessionOut:
+        session = await self._backend.start_mock_exam(mock_exam_id, str(request_id))
+        return await self._mock_exam_session_out(session, locale=locale)
+
+    async def get_mock_exam_session(self, session_id: UUID, *, locale: str) -> MockExamSessionOut:
+        session = await self._backend.get_mock_exam_session(str(session_id))
+        return await self._mock_exam_session_out(session, locale=locale)
+
+    async def submit_mock_exam(
+        self, session_id: UUID, *, answers: dict[int, str], locale: str
+    ) -> MockExamResultOut:
+        result = await self._backend.submit_mock_exam(
+            str(session_id), answers=answers, accept_language=locale
+        )
+        return await self._mock_exam_result_out(result, locale=locale)
+
+    async def mock_exam_result(self, session_id: UUID, *, locale: str) -> MockExamResultOut:
+        result = await self._backend.get_mock_exam_result(str(session_id), accept_language=locale)
+        return await self._mock_exam_result_out(result, locale=locale)
+
+    async def mock_exam_history(self, *, locale: str) -> list[MockExamHistoryEntryOut]:
+        entries = await self._backend.list_mock_exam_history(accept_language=locale)
+        return [mappers.map_mock_exam_history_entry(entry) for entry in entries]
+
+    async def _mock_exam_session_out(
+        self, session: TheoryMockExamSession, *, locale: str
+    ) -> MockExamSessionOut:
+        questions = await self._question_bodies(
+            [QuestionRef(id=item.question_id, version=item.version) for item in session.items],
+            locale=locale,
+            context=f"mock exam session {session.session_id}",
+        )
+        items = mappers.hydrate_items(list(session.items), questions, self._resolver)
+        return mappers.map_mock_exam_session(session, items)
+
+    async def _mock_exam_result_out(
+        self, result: TheoryMockExamResult, *, locale: str
+    ) -> MockExamResultOut:
+        questions = await self._question_bodies(
+            [QuestionRef(id=item.question_id, version=item.version) for item in result.items],
+            locale=locale,
+            context=f"mock exam session {result.session_id}",
+        )
+        return mappers.map_mock_exam_result(result, questions, self._resolver)
+
+    async def _question_bodies(
+        self, refs: list[QuestionRef], *, locale: str, context: str
+    ) -> dict[str, BoostQuestion]:
+        if not refs:
+            return {}
+        found, missing = await self._bodies.get_question_revisions(refs, locale)
+        if missing:
+            raise ContentNotFoundError(
+                f"Missing cached bodies for {len(missing)} question(s) in {context}"
+            )
+        return found
 
     # --- Lesson theory -----------------------------------------------------------
 

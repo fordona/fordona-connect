@@ -23,6 +23,7 @@ from fordona_connect.learning.attempts.service import AttemptService
 from fordona_connect.learning.backend import LocalTheoryBackend
 from fordona_connect.learning.content.snapshot import SnapshotProvider
 from fordona_connect.learning.content.sync import ContentSyncService
+from fordona_connect.learning.mock_exam_sessions.service import MockExamSessionService
 from fordona_connect.learning.mock_exams import MockExamService
 from fordona_connect.learning.platform import PlatformClient
 from fordona_connect.learning.progress.recorder import ProgressService
@@ -136,8 +137,11 @@ async def services(
             progress=ProgressService(sessions),
             summaries=screens,
         )
+        mock_exam_sessions = MockExamSessionService(sessions, snapshots, platform)
         theory = TheoryService(
-            LocalTheoryBackend(attempts, screens, MockExamService(sessions, snapshots)),
+            LocalTheoryBackend(
+                attempts, screens, MockExamService(sessions, snapshots), mock_exam_sessions
+            ),
             bodies,
             AttemptRefCache(cache),
             build_asset_url_resolver(settings),
@@ -146,6 +150,8 @@ async def services(
             LearningJourneyRepository(sessions),
             BoostJourneyContent(sessions, snapshots, bodies, locale="sv-SE"),
             platform,
+            access=mock_exam_sessions,
+            mock_exams=mock_exam_sessions,
         )
         learner = learner_id_var.set(LEARNER)
         token = learner_token_var.set("learner-jwt")

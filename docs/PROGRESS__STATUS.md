@@ -2997,3 +2997,60 @@ The diagnostics and reports log for `BFF_IMPLEMENTATION_PROGRESS.md`:
 - **Consequence:** dev and staging point `BOOST_BASE_URL` at real Boost. The P2/§13 gaps recorded
   above (change feed, batch routes, `question-templates`, `topics` missing from real Boost) are no
   longer covered by anything locally.
+
+### 2026-11-20 · Owner-requested · Mock exam sessions, home access block, event consumer on
+
+- **Status:** DONE (not a tracker task)
+- **Decision (owner, 2026-11-20):** fordona-connect is the theory service; fordona-engine stays the
+  platform (identity, payments, subscriptions). The engine provides the fact (subscribed or not);
+  connect applies the rules. This replaces CLAUDE.md's "the BFF never decides access", which no
+  longer matched the code (`learning/entitlement.py` already decided unit and milestone locks).
+- **Why now:** fordona-engine PR #193 removed the Directus-era theory code saying mock exams and AI
+  chat had moved here. Only the mock exam catalogue had. Taking an exam, free attempts and
+  `GET /v1/theory/access` were gone with no replacement.
+- **Added:** `learning/mock_exam_sessions` (migration 0008) and five routes:
+  `POST /v1/mock-exams/{mockExamId}/sessions`, `GET /v1/mock-exams/sessions`,
+  `GET /v1/mock-exams/sessions/{sessionId}`, `POST /v1/mock-exams/sessions/{sessionId}/submission`,
+  `GET /v1/mock-exams/sessions/{sessionId}/result`. Rules from the engine's `MockExamService`,
+  configurable: `MOCK_EXAM_FREE_ATTEMPTS=3` (lifetime, used at start), `MOCK_EXAM_PASS_PERCENT=75`,
+  `MOCK_EXAM_TIME_LIMIT_SECONDS=3600`, `MOCK_EXAM_SUBMIT_GRACE_SECONDS=60`. Differences from the
+  engine, on purpose: starting resumes an open session instead of using another attempt; a repeated
+  submit returns the stored result instead of 409; a late submit really stays `TIMED_OUT` (the
+  engine's rolled back); timed out is 409, not 400. The engine's exam types and mock tests are not
+  ported: Boost's mock exams replace both.
+- **Access:** `GET /v1/home` (`access`, camelCase) and `GET /v1/learning-journey/home` (`access`,
+  snake_case) carry `level` (`FREE`/`SUBSCRIBED`) and `mockExams` (`available`,
+  `freeAttemptsLimit`, `freeAttemptsRemaining`, null when subscribed). The journey home's
+  `tabs.mock_exams` is unlocked once an exam is published (it was hard-coded locked).
+  `subscriptionExpiresAt` is not included: the engine's internal learner endpoint does not send it.
+- **Reliability:** `PLATFORM_EVENTS_INTERVAL_SECONDS` defaults to 5 (was 0, so a deployment without
+  the variable never heard `subscription.changed` or `user.deleted`); setting 0 outside local logs
+  `platform_events_disabled` at startup. `learner_context_unavailable_failing_closed` is now logged
+  at error level: alert on it. `user.deleted` also deletes mock exam sessions.
+- **Not done:** AI chat (dropped for now by the owner); mock exam answers feeding the mistake
+  ledger or readiness; alert rules in the log platform (outside this repo).
+- **Checks:** 528 passed, 56 skipped (pytest, Docker up, integration included); ruff check and
+  format clean; mypy (`src`) clean.
+
+### 2026-11-20 · Owner-requested · One readiness score: journey and mock exams
+
+- **Status:** DONE (not a tracker task)
+- **Decision (owner):** the app shows one readiness, the learning journey's. Theory lessons are
+  optional and leave it; mock exams weigh more than the journey. The theory readiness
+  (`/v1/readiness`, `/v1/home`) is set aside, not changed.
+- **Formula** (`learning_journey/readiness.py`): `readiness = 0.4 x journey + 0.6 x mock exams`.
+  Journey: the theory lessons' formula applied to challenges, the sum of each challenge's
+  `best_full_attempt_score_percentage` (untried = 0) over the number of challenges. Mock exams:
+  the mean of the last 3 completed sittings, a missing sitting counting 0. Recent sittings rather
+  than best per exam, because Boost's mock exams are fixed question sets a retake can memorise.
+  Timed-out and open sittings are not counted. Before any mock exam, readiness tops out at 40 %.
+- **Was:** completed challenges over total challenges, ignoring scores; `best_mock_result` always
+  null.
+- **Response:** `percentage`, `completed_challenges` and `total_challenges` keep their names;
+  added `journey {percentage, completed_challenges, total_challenges}`,
+  `mock_exams {percentage, sittings_counted, sittings_needed}` and `mock_exam_weight`;
+  `best_mock_result` is the best completed sitting.
+- **Settings:** `READINESS_MOCK_EXAM_WEIGHT=0.6`, `READINESS_MOCK_EXAM_SITTINGS=3`.
+- **Checks:** 540 passed, 56 skipped (pytest, integration included); ruff check and format clean;
+  mypy (`src`) clean.
+

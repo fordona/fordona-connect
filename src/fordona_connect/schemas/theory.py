@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from fordona_connect.schemas.common import APIModel
 from fordona_connect.schemas.content_blocks import ContentBlockOut
@@ -105,6 +105,22 @@ class HomeUpNextOut(APIModel):
     status: str
 
 
+class MockExamAccessOut(APIModel):
+    # false until at least one mock exam is published.
+    available: bool
+    free_attempts_limit: int
+    # null for a subscribed learner: no limit.
+    free_attempts_remaining: int | None = None
+
+
+class AccessOut(APIModel):
+    """What the learner may use. ``SUBSCRIBED`` once fordona-engine reports an active
+    theory subscription (it changes within a minute of a completed payment)."""
+
+    level: Literal["FREE", "SUBSCRIBED"]
+    mock_exams: MockExamAccessOut
+
+
 class HomeOut(APIModel):
     user: HomeUserOut
     week: HomeWeekOut | None = None
@@ -115,6 +131,7 @@ class HomeOut(APIModel):
     continue_: HomeContinueOut | None = Field(default=None, alias="continue")
     up_next: list[HomeUpNextOut] = Field(default_factory=list)
     learning_path_etag: str
+    access: AccessOut | None = None
 
 
 # --- Learning path (GET /v1/learning-path) ------------------------------------
@@ -239,6 +256,83 @@ class MockExamDetailOut(APIModel):
     questions: list[MockExamQuestionOut] = Field(default_factory=list)
 
 
+# --- Mock exam sessions ----------------------------------------------------------------
+
+
+class StartMockExamIn(APIModel):
+    request_id: UUID
+
+
+class MockExamAnswerIn(APIModel):
+    seq: int = Field(ge=1)
+    selected_option_key: str = Field(min_length=1)
+
+
+class MockExamSubmitIn(APIModel):
+    """Every answer at once. An item left out counts as wrong."""
+
+    answers: list[MockExamAnswerIn] = Field(default_factory=list, max_length=500)
+
+    @field_validator("answers")
+    @classmethod
+    def _one_answer_per_item(cls, answers: list[MockExamAnswerIn]) -> list[MockExamAnswerIn]:
+        seqs = [answer.seq for answer in answers]
+        if len(seqs) != len(set(seqs)):
+            raise ValueError("each seq may be answered once")
+        return answers
+
+
+class MockExamSessionOut(APIModel):
+    session_id: str
+    mock_exam_id: str
+    # IN_PROGRESS, COMPLETED or TIMED_OUT.
+    status: str
+    started_at: datetime
+    # null when the exam is untimed.
+    expires_at: datetime | None = None
+    time_limit_seconds: int | None = None
+    pass_percent: int
+    question_count: int
+    items: list[ItemOut] = Field(default_factory=list)
+    # null for a subscribed learner: no limit.
+    free_attempts_remaining: int | None = None
+
+
+class MockExamGradedItemOut(APIModel):
+    seq: int
+    # null when the item was left unanswered.
+    selected_option_key: str | None = None
+    is_correct: bool
+    correct_option: "CorrectOptionOut"
+    explanation: list[ContentBlockOut] = Field(default_factory=list)
+
+
+class MockExamResultOut(APIModel):
+    session_id: str
+    mock_exam_id: str
+    status: Literal["COMPLETED"]
+    correct_count: int
+    total_count: int
+    score_percent: int
+    pass_percent: int
+    passed: bool
+    time_taken_seconds: int
+    completed_at: datetime
+    items: list[MockExamGradedItemOut] = Field(default_factory=list)
+
+
+class MockExamHistoryEntryOut(APIModel):
+    session_id: str
+    mock_exam_id: str
+    name: str
+    correct_count: int
+    total_count: int
+    score_percent: int
+    passed: bool
+    time_taken_seconds: int
+    completed_at: datetime
+
+
 class AttemptOut(APIModel):
     attempt_id: str
     # Known on start (the lessonId path param); null on GET /v1/attempts/{attemptId}
@@ -322,3 +416,7 @@ class AnswerIn(APIModel):
     seq: int = Field(ge=1)
     selected_option_key: str = Field(min_length=1)
     duration_ms: int | None = Field(default=None, ge=0)
+
+
+# Defined above CorrectOptionOut, so its forward reference resolves here.
+MockExamGradedItemOut.model_rebuild()

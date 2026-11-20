@@ -41,6 +41,11 @@ PUBLIC_THEORY_PATHS = frozenset(
         # original 9-endpoint scope; not in the plan's own acceptance criterion below.
         "/v1/mock-exams",
         "/v1/mock-exams/{mockExamId}",
+        "/v1/mock-exams/{mockExamId}/sessions",
+        "/v1/mock-exams/sessions",
+        "/v1/mock-exams/sessions/{sessionId}",
+        "/v1/mock-exams/sessions/{sessionId}/submission",
+        "/v1/mock-exams/sessions/{sessionId}/result",
         # Personalized Learning Journey (2026-11-07) — a deliberately isolated, temporary
         # BFF-only feature (own snake_case/problem+json-free error envelope, own DB tables,
         # no engine/Boost calls) approved as a stopgap while the Boost/engine/mobile content

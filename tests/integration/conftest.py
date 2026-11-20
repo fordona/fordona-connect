@@ -29,6 +29,7 @@ _LEARNING_TABLES = (
     "learner_summary",
     "learner_activity_day",
     "learner_activity_lesson",
+    "mock_exam_session",
 )
 
 

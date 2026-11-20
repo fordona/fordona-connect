@@ -8,10 +8,17 @@ the engine with a short cache; tests pass a fake.
 from typing import Protocol
 
 from fordona_connect.learning.content.snapshot import ContentSnapshot
+from fordona_connect.learning.theory_models import TheoryAccess, TheoryMockExamResults
 
 
 class SubscriptionSource(Protocol):
     async def is_subscribed(self, learner_id: str) -> bool: ...
+
+
+class AccessSource(Protocol):
+    """A learner's access level and allowances, as the home screens show them."""
+
+    async def access(self, learner_id: str) -> TheoryAccess: ...
 
 
 class Entitlement:
@@ -23,3 +30,9 @@ class Entitlement:
 
     def unit_entitled(self, unit_id: str) -> bool:
         return self.subscribed or unit_id == self._free_unit_id
+
+
+class MockExamResultsSource(Protocol):
+    """A learner's completed mock exam sittings, for the readiness score."""
+
+    async def results(self, learner_id: str, *, recent: int) -> TheoryMockExamResults: ...

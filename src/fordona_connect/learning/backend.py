@@ -11,7 +11,8 @@ from typing import Protocol
 from fordona_connect.core.context import learner_id_var
 from fordona_connect.core.errors import UnauthorizedError
 from fordona_connect.learning.attempts.service import AttemptService
-from fordona_connect.learning.errors import AttemptNotFoundError
+from fordona_connect.learning.errors import AttemptNotFoundError, MockExamSessionNotFoundError
+from fordona_connect.learning.mock_exam_sessions.service import MockExamSessionService
 from fordona_connect.learning.mock_exams import MockExamService
 from fordona_connect.learning.progress.screens import ProgressScreens
 from fordona_connect.learning.theory_models import (
@@ -22,6 +23,9 @@ from fordona_connect.learning.theory_models import (
     TheoryLearningPath,
     TheoryLessonState,
     TheoryMockExamDetail,
+    TheoryMockExamHistoryEntry,
+    TheoryMockExamResult,
+    TheoryMockExamSession,
     TheoryMockExamSummary,
     TheoryReadiness,
 )
@@ -39,6 +43,13 @@ def _uuid(value: str) -> uuid.UUID:
         return uuid.UUID(value)
     except ValueError as exc:
         raise AttemptNotFoundError(f"Attempt not found: {value}") from exc
+
+
+def _session_uuid(value: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(value)
+    except ValueError as exc:
+        raise MockExamSessionNotFoundError(f"Mock exam session not found: {value}") from exc
 
 
 class TheoryBackend(Protocol):
@@ -81,17 +92,68 @@ class TheoryBackend(Protocol):
         self, attempt_id: str, *, accept_language: str, timezone: str | None
     ) -> TheoryAttemptPhaseCompletion: ...
 
+    async def start_mock_exam(
+        self, mock_exam_id: str, request_id: str
+    ) -> TheoryMockExamSession: ...
+
+    async def get_mock_exam_session(self, session_id: str) -> TheoryMockExamSession: ...
+
+    async def submit_mock_exam(
+        self, session_id: str, *, answers: dict[int, str], accept_language: str
+    ) -> TheoryMockExamResult: ...
+
+    async def get_mock_exam_result(
+        self, session_id: str, *, accept_language: str
+    ) -> TheoryMockExamResult: ...
+
+    async def list_mock_exam_history(
+        self, *, accept_language: str
+    ) -> list[TheoryMockExamHistoryEntry]: ...
+
 
 class LocalTheoryBackend:
     def __init__(
-        self, attempts: AttemptService, screens: ProgressScreens, mock_exams: MockExamService
+        self,
+        attempts: AttemptService,
+        screens: ProgressScreens,
+        mock_exams: MockExamService,
+        mock_exam_sessions: MockExamSessionService,
     ) -> None:
         self._attempts = attempts
         self._screens = screens
         self._mock_exams = mock_exams
+        self._sessions = mock_exam_sessions
 
     async def get_home(self, *, accept_language: str, timezone: str | None) -> TheoryHome:
-        return await self._screens.home(_learner(), locale=accept_language, timezone=timezone)
+        learner_id = _learner()
+        home = await self._screens.home(learner_id, locale=accept_language, timezone=timezone)
+        access = await self._sessions.access(learner_id)
+        return home.model_copy(update={"access": access})
+
+    async def start_mock_exam(self, mock_exam_id: str, request_id: str) -> TheoryMockExamSession:
+        return await self._sessions.start(_learner(), mock_exam_id, uuid.UUID(request_id))
+
+    async def get_mock_exam_session(self, session_id: str) -> TheoryMockExamSession:
+        return await self._sessions.get(_learner(), _session_uuid(session_id))
+
+    async def submit_mock_exam(
+        self, session_id: str, *, answers: dict[int, str], accept_language: str
+    ) -> TheoryMockExamResult:
+        return await self._sessions.submit(
+            _learner(), _session_uuid(session_id), answers, locale=accept_language
+        )
+
+    async def get_mock_exam_result(
+        self, session_id: str, *, accept_language: str
+    ) -> TheoryMockExamResult:
+        return await self._sessions.result(
+            _learner(), _session_uuid(session_id), locale=accept_language
+        )
+
+    async def list_mock_exam_history(
+        self, *, accept_language: str
+    ) -> list[TheoryMockExamHistoryEntry]:
+        return await self._sessions.history(_learner(), locale=accept_language)
 
     async def get_learning_path(
         self, *, accept_language: str, if_none_match: str | None
