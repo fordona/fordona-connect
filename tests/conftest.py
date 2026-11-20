@@ -97,6 +97,8 @@ def make_settings(**overrides: object) -> Settings:
         "media_signing_key": "media-secret",
         # The background content sync would call Boost on its own; tests run it explicitly.
         "content_sync_interval_seconds": 0,
+        # Likewise the platform event consumer would poll the engine on its own.
+        "platform_events_interval_seconds": 0,
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)  # type: ignore[call-arg]
@@ -160,7 +162,9 @@ def harness_factory() -> Callable[..., AbstractAsyncContextManager[Harness]]:
                     # with ``FakeLearningJourneyRepository``-backed service instead.
                     db_engine = create_engine(s)
                     from tests.learning_journey.fakes import (
+                        FakeAccess,
                         FakeLearningJourneyRepository,
+                        FakeMockExams,
                         FakeSubscriptions,
                     )
 
@@ -169,6 +173,8 @@ def harness_factory() -> Callable[..., AbstractAsyncContextManager[Harness]]:
                         LearningJourneyRepository(create_sessionmaker(db_engine)),
                         content,
                         FakeSubscriptions(),
+                        access=FakeAccess(),
+                        mock_exams=FakeMockExams(),
                     )
 
                     def check(name: str) -> Callable[[], Awaitable[None]]:

@@ -14,6 +14,7 @@ from fordona_connect.cache.attempt_refs import ItemRef
 from fordona_connect.clients.boost.models import BoostQuestion, ContentBlock, QuestionOption
 from fordona_connect.core.errors import ContentNotFoundError
 from fordona_connect.learning.theory_models import (
+    TheoryAccess,
     TheoryAnswerFeedback,
     TheoryAttemptItemRef,
     TheoryAttemptPhaseCompletion,
@@ -28,13 +29,17 @@ from fordona_connect.learning.theory_models import (
     TheoryLessonOpenAttemptRef,
     TheoryLessonState,
     TheoryMockExamDetail,
+    TheoryMockExamHistoryEntry,
     TheoryMockExamQuestionRef,
+    TheoryMockExamResult,
+    TheoryMockExamSession,
     TheoryMockExamSummary,
     TheoryPhaseSummary,
     TheoryReadiness,
 )
 from fordona_connect.schemas.content_blocks import ContentBlockOut, TextBlockOut
 from fordona_connect.schemas.theory import (
+    AccessOut,
     CompletionDailyChallengeOut,
     CompletionNextOut,
     CompletionProgressOut,
@@ -58,8 +63,13 @@ from fordona_connect.schemas.theory import (
     LessonDetailOut,
     LessonLastResultOut,
     LessonPhaseCompletionOut,
+    MockExamAccessOut,
     MockExamDetailOut,
+    MockExamGradedItemOut,
+    MockExamHistoryEntryOut,
     MockExamQuestionOut,
+    MockExamResultOut,
+    MockExamSessionOut,
     MockExamSummaryOut,
     OpenAttemptOut,
     OptionOut,
@@ -136,6 +146,18 @@ def map_home(engine: TheoryHome) -> HomeOut:
         continue_=_map_continue(engine.continue_) if engine.continue_ is not None else None,
         up_next=[_map_up_next(entry) for entry in engine.up_next],
         learning_path_etag=engine.learning_path_etag,
+        access=map_access(engine.access) if engine.access is not None else None,
+    )
+
+
+def map_access(access: TheoryAccess) -> AccessOut:
+    return AccessOut(
+        level=access.level,
+        mock_exams=MockExamAccessOut(
+            available=access.mock_exams.available,
+            free_attempts_limit=access.mock_exams.free_attempts_limit,
+            free_attempts_remaining=access.mock_exams.free_attempts_remaining,
+        ),
     )
 
 
@@ -494,4 +516,80 @@ def map_mock_exam_detail(
         question_count=engine.question_count,
         complete=engine.complete,
         questions=questions,
+    )
+
+
+# --- Mock exam sessions ----------------------------------------------------------------
+
+
+def map_mock_exam_session(
+    session: TheoryMockExamSession, items: list[ItemOut]
+) -> MockExamSessionOut:
+    return MockExamSessionOut(
+        session_id=session.session_id,
+        mock_exam_id=session.mock_exam_id,
+        status=session.status,
+        started_at=session.started_at,
+        expires_at=session.expires_at,
+        time_limit_seconds=session.time_limit_seconds,
+        pass_percent=session.pass_percent,
+        question_count=len(session.items),
+        items=items,
+        free_attempts_remaining=session.free_attempts_remaining,
+    )
+
+
+def map_mock_exam_result(
+    result: TheoryMockExamResult,
+    questions: dict[str, BoostQuestion],
+    resolver: AssetUrlResolver,
+) -> MockExamResultOut:
+    items: list[MockExamGradedItemOut] = []
+    for item in result.items:
+        question = questions.get(item.question_id)
+        if question is None:
+            raise ContentNotFoundError(
+                f"No cached body for question {item.question_id} version {item.version}"
+            )
+        items.append(
+            MockExamGradedItemOut(
+                seq=item.seq,
+                selected_option_key=item.selected_option_key,
+                is_correct=item.is_correct,
+                correct_option=CorrectOptionOut(
+                    key=item.correct_option_key,
+                    label=item.correct_option_label,
+                    content=correct_option_content(question, item.correct_option_key, resolver),
+                ),
+                explanation=render_blocks(
+                    parse_explanation_blocks(item.explanation), resolver, unit_id=None
+                ),
+            )
+        )
+    return MockExamResultOut(
+        session_id=result.session_id,
+        mock_exam_id=result.mock_exam_id,
+        status="COMPLETED",
+        correct_count=result.correct_count,
+        total_count=result.total_count,
+        score_percent=result.score_percent,
+        pass_percent=result.pass_percent,
+        passed=result.passed,
+        time_taken_seconds=result.time_taken_seconds,
+        completed_at=result.completed_at,
+        items=items,
+    )
+
+
+def map_mock_exam_history_entry(entry: TheoryMockExamHistoryEntry) -> MockExamHistoryEntryOut:
+    return MockExamHistoryEntryOut(
+        session_id=entry.session_id,
+        mock_exam_id=entry.mock_exam_id,
+        name=entry.name,
+        correct_count=entry.correct_count,
+        total_count=entry.total_count,
+        score_percent=entry.score_percent,
+        passed=entry.passed,
+        time_taken_seconds=entry.time_taken_seconds,
+        completed_at=entry.completed_at,
     )

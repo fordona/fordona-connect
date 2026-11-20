@@ -413,21 +413,37 @@ class RemediationCreateOut(LJModel):
 
 
 class BestMockResultOut(LJModel):
-    """Always ``null`` today — no mock-exam integration exists for the learning
-    journey. The field is modelled so the client has a stable shape to bind to
-    whenever that changes, per explicit instruction: add the field, not the
-    functionality."""
+    """The learner's best completed mock exam sitting; ``null`` before the first one."""
 
     correct_count: int
     total_questions: int
     passed: bool
 
 
+class JourneyReadinessOut(LJModel):
+    percentage: float
+    completed_challenges: int
+    total_challenges: int
+
+
+class MockExamReadinessOut(LJModel):
+    percentage: float
+    # Completed sittings that count (the most recent, up to ``sittings_needed``).
+    sittings_counted: int
+    sittings_needed: int
+
+
 class ReadinessOut(LJModel):
+    """The learner's single readiness score; see ``learning_journey/readiness.py``."""
+
     percentage: float
     completed_challenges: int
     total_challenges: int
     best_mock_result: BestMockResultOut | None
+    journey: JourneyReadinessOut
+    mock_exams: MockExamReadinessOut
+    # The weight of ``mock_exams`` in ``percentage`` (0-1); the journey has the rest.
+    mock_exam_weight: float
 
 
 class WeekDay(LJModel):
@@ -482,7 +498,24 @@ class UpNextChallenge(LJModel):
     status: Literal["LOCKED", "AVAILABLE"]
 
 
+class MockExamAccess(LJModel):
+    # False until at least one mock exam is published.
+    available: bool
+    free_attempts_limit: int
+    # None for a subscribed learner: no limit.
+    free_attempts_remaining: int | None = None
+
+
+class Access(LJModel):
+    """What the learner may use. ``SUBSCRIBED`` once fordona-engine reports an active
+    theory subscription (it changes within a minute of a completed payment)."""
+
+    level: Literal["FREE", "SUBSCRIBED"]
+    mock_exams: MockExamAccess
+
+
 class HomeOut(LJModel):
+    access: Access
     week: Week
     daily_challenge: DailyChallenge
     streak: Streak

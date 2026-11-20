@@ -110,6 +110,23 @@ Each phase ends green (pytest, ruff, mypy) and is committed on its own.
   activation and on account erasure. `learn/theory`, the theory admin controller, both sync jobs,
   the theory caches, error codes and config are removed; V1_0_26 drops the Boost-era tables.
   `user.updated` is defined but not emitted yet (names change rarely; the 60 s cache covers it).
+- [x] **L9 Mock exam sessions and access** (2026-11-20): taking a mock exam, which the engine's
+  removal (fordona-engine PR #193) dropped without a replacement. `learning/mock_exam_sessions`
+  with migration 0008 (`mock_exam_session`, `mock_exam_item`): start (idempotent on `requestId`,
+  resumes an open session), submit all answers at once (graded server-side, a retry returns the
+  stored result), result, history. Rules ported from the engine's `MockExamService`: a free learner
+  has 3 lifetime starts (`MOCK_EXAM_FREE_ATTEMPTS`), subscribers are unlimited, pass mark 75 %,
+  one-hour limit with 60 s submit grace. `GET /v1/home` and `GET /v1/learning-journey/home` now
+  carry an `access` block (`FREE`/`SUBSCRIBED` plus mock exam allowance), replacing the engine's
+  removed `GET /v1/theory/access`; the journey home's mock exam tab follows whether an exam is
+  published. AI chat is not ported (product decision, 2026-11-20). Not in this phase: mock exam
+  answers do not feed the mistake ledger.
+- [x] **L10 Single readiness score** (2026-11-20): `GET /v1/learning-journey/readiness` (and the
+  journey home's `readiness`) is the app's one readiness: 40 % journey (mean best full-attempt
+  score over every challenge, untried = 0) and 60 % mock exams (mean of the last 3 completed
+  sittings, missing = 0), in `learning_journey/readiness.py`. `READINESS_MOCK_EXAM_WEIGHT` and
+  `READINESS_MOCK_EXAM_SITTINGS` tune it. `best_mock_result` is now filled. The theory
+  lessons' readiness (`/v1/readiness`, `/v1/home`) is unchanged and set aside for now.
 
 ## Verification against Boost dev (2026-11-09)
 
@@ -132,7 +149,8 @@ lesson attempt graded with the real answer keys through to the retry phase, and 
    `engine_error_body_unparseable` with a hint. Its `THEORY_INTERNAL_TOKEN` must equal
    fordona-connect's `ENGINE_INTERNAL_TOKEN` (a mismatch is a bare 403).
 2. Deploy fordona-connect with `BOOST_GRADING_TOKEN`, `CONTENT_SYNC_INTERVAL_SECONDS` (e.g. 60)
-   and `PLATFORM_EVENTS_INTERVAL_SECONDS` (e.g. 5). The first sync fills the
+   and `PLATFORM_EVENTS_INTERVAL_SECONDS` (default 5 since 2026-11-20; 0 outside local logs
+   `platform_events_disabled` at startup). The first sync fills the
    content tables; until then lessons are empty.
 3. Learner history in the engine's old theory tables is not migrated (pre-launch: test data only).
 

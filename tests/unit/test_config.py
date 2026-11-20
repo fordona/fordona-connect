@@ -198,3 +198,26 @@ def test_content_sync_can_be_turned_off_without_a_grading_token() -> None:
 def test_grading_token_is_not_rendered() -> None:
     settings = _settings(**_OUTSIDE_LOCAL, boost_grading_token="super-secret-grading")
     assert "super-secret-grading" not in repr(settings)
+
+
+def test_platform_event_consumer_is_on_by_default() -> None:
+    assert _settings(**_AUTH).platform_events_interval_seconds == 5
+
+
+def test_turning_the_platform_event_consumer_off_outside_local_is_flagged() -> None:
+    settings = _settings(
+        **_AUTH,
+        app_env="prod",
+        engine_internal_token="t",
+        media_signing_key="t",
+        platform_events_interval_seconds=0,
+    )
+
+    [warning] = settings.platform_event_warnings
+    assert "PLATFORM_EVENTS_INTERVAL_SECONDS=0" in warning
+
+
+def test_turning_the_platform_event_consumer_off_locally_is_not_flagged() -> None:
+    settings = _settings(**_AUTH, app_env="local", platform_events_interval_seconds=0)
+
+    assert settings.platform_event_warnings == []

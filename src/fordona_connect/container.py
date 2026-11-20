@@ -20,12 +20,15 @@ from fordona_connect.learning.attempts.service import AttemptService
 from fordona_connect.learning.backend import LocalTheoryBackend
 from fordona_connect.learning.content.snapshot import SnapshotProvider
 from fordona_connect.learning.content.sync import ContentSyncRunner, ContentSyncService
+from fordona_connect.learning.mock_exam_sessions.scoring import MockExamRules
+from fordona_connect.learning.mock_exam_sessions.service import MockExamSessionService
 from fordona_connect.learning.mock_exams import MockExamService
 from fordona_connect.learning.platform import PlatformClient, PlatformEventConsumer
 from fordona_connect.learning.progress.recorder import ProgressService
 from fordona_connect.learning.progress.screens import ProgressScreens
 from fordona_connect.learning.selection import Strategy
 from fordona_connect.learning_journey.boost_content import BoostJourneyContent
+from fordona_connect.learning_journey.readiness import ReadinessRules
 from fordona_connect.learning_journey.repository import LearningJourneyRepository
 from fordona_connect.learning_journey.service import LearningJourneyService
 from fordona_connect.services.body_cache import BodyCache
@@ -106,7 +109,20 @@ async def build_services(settings: Settings) -> AsyncIterator[Services]:
         progress=ProgressService(db_sessionmaker),
         summaries=screens,
     )
-    backend = LocalTheoryBackend(attempts, screens, MockExamService(db_sessionmaker, snapshots))
+    mock_exam_sessions = MockExamSessionService(
+        db_sessionmaker,
+        snapshots,
+        platform,
+        rules=MockExamRules(
+            free_attempts=settings.mock_exam_free_attempts,
+            pass_percent=settings.mock_exam_pass_percent,
+            time_limit_seconds=settings.mock_exam_time_limit_seconds,
+            submit_grace_seconds=settings.mock_exam_submit_grace_seconds,
+        ),
+    )
+    backend = LocalTheoryBackend(
+        attempts, screens, MockExamService(db_sessionmaker, snapshots), mock_exam_sessions
+    )
 
     prefetch_gate: ReleasePrefetchGate | None = None
     prefetch_runner: ReleasePrefetchRunner | None = None
@@ -135,6 +151,12 @@ async def build_services(settings: Settings) -> AsyncIterator[Services]:
         LearningJourneyRepository(db_sessionmaker),
         BoostJourneyContent(db_sessionmaker, snapshots, body_cache, locale=settings.default_locale),
         platform,
+        access=mock_exam_sessions,
+        mock_exams=mock_exam_sessions,
+        readiness_rules=ReadinessRules(
+            mock_exam_weight=settings.readiness_mock_exam_weight,
+            mock_exam_sittings=settings.readiness_mock_exam_sittings,
+        ),
     )
 
     content_sync = ContentSyncService(

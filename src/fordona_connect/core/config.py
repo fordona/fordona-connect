@@ -104,10 +104,24 @@ class Settings(BaseSettings):
     ] = "SUNDAY"
     progress_daily_challenge_lessons: int = Field(default=3, ge=1)
 
+    # Mock exams: a free learner's lifetime starts; the pass mark (percent of questions,
+    # rounded down); the time limit (0 = untimed); and network slack after the deadline.
+    mock_exam_free_attempts: int = Field(default=3, ge=0)
+    mock_exam_pass_percent: int = Field(default=75, ge=0, le=100)
+    mock_exam_time_limit_seconds: int = Field(default=3600, ge=0)
+    mock_exam_submit_grace_seconds: int = Field(default=60, ge=0)
+
+    # The single readiness score (learning_journey/readiness.py): the mock exams' share
+    # (the journey has the rest) and how many recent sittings the mock exam part averages.
+    readiness_mock_exam_weight: float = Field(default=0.6, ge=0, le=1)
+    readiness_mock_exam_sittings: int = Field(default=3, ge=1)
+
     # Seconds a learner's platform context (name, subscription) is cached.
     platform_learner_cache_seconds: int = Field(default=60, ge=1)
     # Seconds between pulls of fordona-engine's event outbox; 0 turns the consumer off.
-    platform_events_interval_seconds: float = Field(default=0, ge=0)
+    # On by default: it is how a payment unlocks content within seconds (subscription.changed)
+    # and how a deleted account's learning data is erased (user.deleted).
+    platform_events_interval_seconds: float = Field(default=5, ge=0)
 
     # --- Locale ------------------------------------------------------------
     default_locale: str = "sv-SE"
@@ -227,6 +241,17 @@ class Settings(BaseSettings):
                 "accepted by Boost too; use the Fordona API audience"
             )
         return warnings
+
+    @property
+    def platform_event_warnings(self) -> list[str]:
+        """Settings that leave fordona-connect deaf to fordona-engine's events."""
+        if self.platform_events_interval_seconds > 0 or self.app_env is Environment.LOCAL:
+            return []
+        return [
+            "PLATFORM_EVENTS_INTERVAL_SECONDS=0: a payment unlocks content only when the "
+            f"learner cache expires (PLATFORM_LEARNER_CACHE_SECONDS="
+            f"{self.platform_learner_cache_seconds}), and user.deleted never erases learning data"
+        ]
 
     @property
     def asset_base_url(self) -> str:

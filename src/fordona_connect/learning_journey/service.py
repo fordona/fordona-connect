@@ -23,7 +23,12 @@ from zoneinfo import ZoneInfo
 
 from fordona_connect.core.errors import AppError
 from fordona_connect.core.logging import get_logger
-from fordona_connect.learning.entitlement import SubscriptionSource
+from fordona_connect.learning.entitlement import (
+    AccessSource,
+    MockExamResultsSource,
+    SubscriptionSource,
+)
+from fordona_connect.learning_journey import readiness
 from fordona_connect.learning_journey.content import ChallengeContent, JourneyContentSource
 from fordona_connect.learning_journey.errors import (
     ActiveAttemptExistsError,
@@ -45,8 +50,10 @@ from fordona_connect.learning_journey.models import (
     LearningJourneySession,
     LearningJourneyUserChallengeProgress,
 )
+from fordona_connect.learning_journey.readiness import ReadinessRules
 from fordona_connect.learning_journey.repository import LearningJourneyRepository
 from fordona_connect.learning_journey.schemas import (
+    Access,
     AccessState,
     AnswerFeedbackOut,
     AttemptDetailOut,
@@ -54,6 +61,7 @@ from fordona_connect.learning_journey.schemas import (
     AttemptProgress,
     AttemptQuestionOut,
     AttemptSummaryOut,
+    BestMockResultOut,
     ChallengeDetailOut,
     ChallengeProgressSummary,
     ChallengeSummaryOut,
@@ -65,12 +73,15 @@ from fordona_connect.learning_journey.schemas import (
     HomeOut,
     HomeTabs,
     JourneyProgress,
+    JourneyReadinessOut,
     JourneyStats,
     LearningJourneyOut,
     MilestoneDetailOut,
     MilestoneProgress,
     MilestoneStats,
     MilestoneSummaryOut,
+    MockExamAccess,
+    MockExamReadinessOut,
     OptionOut,
     QuestionPreviewOut,
     QuestionResponseOut,
@@ -114,11 +125,17 @@ class LearningJourneyService:
         content: JourneyContentSource,
         subscriptions: SubscriptionSource,
         *,
+        access: AccessSource,
+        mock_exams: MockExamResultsSource,
+        readiness_rules: ReadinessRules | None = None,
         now_fn: Callable[[], datetime] | None = None,
     ) -> None:
         self._repo = repository
         self._content = content
         self._subscriptions = subscriptions
+        self._access = access
+        self._mock_exams = mock_exams
+        self._readiness_rules = readiness_rules or ReadinessRules()
         self._now = now_fn or (lambda: datetime.now(UTC))
 
     @staticmethod
@@ -1262,22 +1279,54 @@ class LearningJourneyService:
     # BFF already forwards verbatim — unvalidated, same as api/deps.py's own
     # ``get_timezone``).
 
-    async def _compute_readiness(self, assignment_id: str) -> ReadinessOut:
+    async def _compute_readiness(self, app_user_id: str, assignment_id: str) -> ReadinessOut:
+        """The single readiness score: see ``learning_journey/readiness.py``."""
+        rules = self._readiness_rules
         progress_by_challenge = await self._repo.list_progress(assignment_id)
         total = len(progress_by_challenge)
         completed = sum(1 for p in progress_by_challenge.values() if p.status == "COMPLETED")
-        percentage = round((completed / total) * 100, 2) if total else 0.0
+        journey = readiness.journey_percent(
+            (
+                float(p.best_full_attempt_score_percentage)
+                if p.best_full_attempt_score_percentage is not None
+                else None
+                for p in progress_by_challenge.values()
+            ),
+            total,
+        )
+
+        results = await self._mock_exams.results(app_user_id, recent=rules.mock_exam_sittings)
+        mock = readiness.mock_exam_percent(
+            [float(score.score_percent) for score in results.recent], rules.mock_exam_sittings
+        )
+        best = results.best
         return ReadinessOut(
-            percentage=percentage,
+            percentage=readiness.overall_percent(journey, mock, rules.mock_exam_weight),
             completed_challenges=completed,
             total_challenges=total,
-            # Always null — see BestMockResultOut's own docstring.
-            best_mock_result=None,
+            best_mock_result=(
+                BestMockResultOut(
+                    correct_count=best.correct_count,
+                    total_questions=best.total_count,
+                    passed=best.passed,
+                )
+                if best is not None
+                else None
+            ),
+            journey=JourneyReadinessOut(
+                percentage=journey, completed_challenges=completed, total_challenges=total
+            ),
+            mock_exams=MockExamReadinessOut(
+                percentage=mock,
+                sittings_counted=min(len(results.recent), rules.mock_exam_sittings),
+                sittings_needed=rules.mock_exam_sittings,
+            ),
+            mock_exam_weight=rules.mock_exam_weight,
         )
 
     async def get_readiness(self, app_user_id: str) -> ReadinessOut:
         assignment_id = await self._ensure_assignment(app_user_id)
-        return await self._compute_readiness(assignment_id)
+        return await self._compute_readiness(app_user_id, assignment_id)
 
     @staticmethod
     def _resolve_zone(timezone: str | None) -> ZoneInfo:
@@ -1374,7 +1423,8 @@ class LearningJourneyService:
             today + timedelta(days=1), datetime.min.time(), tzinfo=zone
         )
 
-        readiness = await self._compute_readiness(assignment_id)
+        readiness_out = await self._compute_readiness(app_user_id, assignment_id)
+        access = await self._access.access(app_user_id)
 
         current, next_challenge, _ = await self._find_current_and_next(assignment_id)
         continue_out = None
@@ -1404,6 +1454,14 @@ class LearningJourneyService:
         )
 
         return HomeOut(
+            access=Access(
+                level=access.level,
+                mock_exams=MockExamAccess(
+                    available=access.mock_exams.available,
+                    free_attempts_limit=access.mock_exams.free_attempts_limit,
+                    free_attempts_remaining=access.mock_exams.free_attempts_remaining,
+                ),
+            ),
             week=Week(timezone=str(zone), starts_on="SUNDAY", days=week_days),
             daily_challenge=DailyChallenge(
                 type="COMPLETE_LESSONS",
@@ -1415,10 +1473,14 @@ class LearningJourneyService:
             streak=Streak(
                 current=current_streak, longest=longest_streak, extended_today=extended_today
             ),
-            readiness=readiness,
+            readiness=readiness_out,
             tabs=HomeTabs(
                 learning_path=TabState(is_locked=False),
-                mock_exams=TabState(is_locked=True, reason="NOT_AVAILABLE"),
+                mock_exams=(
+                    TabState(is_locked=False)
+                    if access.mock_exams.available
+                    else TabState(is_locked=True, reason="NOT_AVAILABLE")
+                ),
             ),
             continue_=continue_out,
             up_next=up_next,

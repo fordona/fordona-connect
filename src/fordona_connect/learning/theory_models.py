@@ -6,7 +6,8 @@ answer-free contract is the mappers' job. An already-answered attempt item carri
 only a boolean ``answered`` flag, never the selected or correct option.
 """
 
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -116,6 +117,7 @@ class TheoryHome(TheoryModel):
     continue_: TheoryHomeContinue | None = Field(default=None, alias="continue")
     up_next: list[TheoryHomeUpNext] = Field(default_factory=list)
     learning_path_etag: str
+    access: "TheoryAccess | None" = None
 
 
 # --- Learning path -------------------------------------------------------------
@@ -224,6 +226,94 @@ class TheoryMockExamDetail(TheoryModel):
     question_count: int
     complete: bool
     items: list[TheoryMockExamQuestionRef] = Field(default_factory=list)
+
+
+# --- Mock exam sessions ------------------------------------------------------------
+
+
+class TheoryMockExamSession(TheoryModel):
+    session_id: str
+    mock_exam_id: str
+    status: str
+    started_at: datetime
+    expires_at: datetime | None = None
+    time_limit_seconds: int | None = None
+    pass_percent: int
+    items: list[TheoryAttemptItemRef] = Field(default_factory=list)
+    # None for a subscribed learner (no limit).
+    free_attempts_remaining: int | None = None
+
+
+class TheoryMockExamGradedItem(TheoryModel):
+    seq: int
+    question_id: str
+    version: str
+    selected_option_key: str | None = None
+    correct_option_key: str
+    correct_option_label: str
+    is_correct: bool
+    explanation: Any = None
+
+
+class TheoryMockExamResult(TheoryModel):
+    session_id: str
+    mock_exam_id: str
+    status: str
+    correct_count: int
+    total_count: int
+    score_percent: int
+    pass_percent: int
+    passed: bool
+    time_taken_seconds: int
+    completed_at: datetime
+    items: list[TheoryMockExamGradedItem] = Field(default_factory=list)
+
+
+class TheoryMockExamHistoryEntry(TheoryModel):
+    session_id: str
+    mock_exam_id: str
+    name: str
+    correct_count: int
+    total_count: int
+    score_percent: int
+    passed: bool
+    time_taken_seconds: int
+    completed_at: datetime
+
+
+class TheoryMockExamScore(TheoryModel):
+    score_percent: int
+    correct_count: int
+    total_count: int
+    passed: bool
+
+
+class TheoryMockExamResults(TheoryModel):
+    """A learner's completed sittings, for readiness."""
+
+    # Newest first, at most the number asked for.
+    recent: list[TheoryMockExamScore] = Field(default_factory=list)
+    # Highest score of all; the most recent of equals.
+    best: TheoryMockExamScore | None = None
+
+
+# --- Access ---------------------------------------------------------------------
+
+
+class TheoryMockExamAccess(TheoryModel):
+    # False until Boost publishes at least one mock exam.
+    available: bool
+    free_attempts_limit: int
+    # None for a subscribed learner (no limit).
+    free_attempts_remaining: int | None = None
+
+
+class TheoryAccess(TheoryModel):
+    level: Literal["FREE", "SUBSCRIBED"]
+    mock_exams: TheoryMockExamAccess
+
+
+TheoryHome.model_rebuild()
 
 
 class TheoryAnswerFeedback(TheoryModel):

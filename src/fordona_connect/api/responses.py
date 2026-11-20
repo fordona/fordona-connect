@@ -91,3 +91,40 @@ PHASE_COMPLETE_ERRORS: dict[int | str, dict[str, Any]] = {
     **_RATE_LIMIT_ERROR,
     **_UPSTREAM_ERRORS,
 }
+
+MOCK_EXAM_START_ERRORS: dict[int | str, dict[str, Any]] = {
+    **_AUTH_ERROR,
+    403: _problem("THEORY_EXAM_ATTEMPTS_EXHAUSTED: every free attempt is used."),
+    404: _problem("THEORY_MOCK_EXAM_NOT_FOUND."),
+    409: _problem(
+        "THEORY_REQUEST_ID_CONFLICT (requestId reused for a different exam) or "
+        "THEORY_MOCK_EXAM_UNAVAILABLE (the exam's full question set is not published)."
+    ),
+    422: _problem("Invalid request body."),
+    **_RATE_LIMIT_ERROR,
+    **_UPSTREAM_ERRORS,
+}
+
+MOCK_EXAM_SESSION_ERRORS: dict[int | str, dict[str, Any]] = {
+    **_AUTH_ERROR,
+    404: _problem("THEORY_MOCK_EXAM_SESSION_NOT_FOUND."),
+    **_RATE_LIMIT_ERROR,
+    **_UPSTREAM_ERRORS,
+}
+
+MOCK_EXAM_SUBMIT_ERRORS: dict[int | str, dict[str, Any]] = {
+    **_AUTH_ERROR,
+    404: _problem("THEORY_MOCK_EXAM_SESSION_NOT_FOUND or THEORY_ITEM_NOT_FOUND (unknown seq)."),
+    409: _problem("THEORY_EXAM_TIMED_OUT: submitted after the deadline."),
+    422: _problem("THEORY_OPTION_INVALID, or an invalid request body."),
+    **_RATE_LIMIT_ERROR,
+    **_UPSTREAM_ERRORS,
+}
+
+MOCK_EXAM_RESULT_ERRORS: dict[int | str, dict[str, Any]] = {
+    **_AUTH_ERROR,
+    404: _problem("THEORY_MOCK_EXAM_SESSION_NOT_FOUND."),
+    409: _problem("THEORY_MOCK_EXAM_NOT_SUBMITTED or THEORY_EXAM_TIMED_OUT."),
+    **_RATE_LIMIT_ERROR,
+    **_UPSTREAM_ERRORS,
+}

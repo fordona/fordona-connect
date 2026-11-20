@@ -6,7 +6,12 @@ __all__ = [
     "AttemptNotFoundError",
     "ItemNotFoundError",
     "LessonNotFoundError",
+    "MockExamAttemptsExhaustedError",
     "MockExamNotFoundError",
+    "MockExamNotSubmittedError",
+    "MockExamSessionNotFoundError",
+    "MockExamTimedOutError",
+    "MockExamUnavailableError",
     "OptionInvalidError",
     "PhaseClosedError",
     "PhaseIncompleteError",
@@ -69,3 +74,39 @@ class MockExamNotFoundError(AppError):
     status_code = 404
     error_code = "THEORY_MOCK_EXAM_NOT_FOUND"
     type_path = "theory/mock-exam-not-found"
+
+
+class MockExamUnavailableError(AppError):
+    """The exam exists but Boost could not give it its full question set."""
+
+    status_code = 409
+    error_code = "THEORY_MOCK_EXAM_UNAVAILABLE"
+    type_path = "theory/mock-exam-unavailable"
+
+
+class MockExamSessionNotFoundError(AppError):
+    status_code = 404
+    error_code = "THEORY_MOCK_EXAM_SESSION_NOT_FOUND"
+    type_path = "theory/mock-exam-session-not-found"
+
+
+class MockExamAttemptsExhaustedError(AppError):
+    """A free learner has used every free mock exam attempt (the engine's code)."""
+
+    status_code = 403
+    error_code = "THEORY_EXAM_ATTEMPTS_EXHAUSTED"
+    type_path = "theory/exam-attempts-exhausted"
+    default_detail = "All free mock exam attempts are used. Subscribe for unlimited attempts."
+
+
+class MockExamTimedOutError(AppError):
+    status_code = 409
+    error_code = "THEORY_EXAM_TIMED_OUT"
+    type_path = "theory/exam-timed-out"
+    default_detail = "The mock exam's time limit has passed."
+
+
+class MockExamNotSubmittedError(AppError):
+    status_code = 409
+    error_code = "THEORY_MOCK_EXAM_NOT_SUBMITTED"
+    type_path = "theory/mock-exam-not-submitted"

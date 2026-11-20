@@ -22,6 +22,7 @@ from fordona_connect.db.models import Base
 from fordona_connect.learning import platform as _platform_models  # noqa: F401 - registers tables
 from fordona_connect.learning.attempts import models as _attempt_models  # noqa: F401 - registers tables
 from fordona_connect.learning.content import models as _content_models  # noqa: F401 - registers tables
+from fordona_connect.learning.mock_exam_sessions import models as _mock_exam_models  # noqa: F401 - registers tables
 from fordona_connect.learning.progress import models as _progress_models  # noqa: F401 - registers tables
 from fordona_connect.learning.retry import models as _retry_models  # noqa: F401 - registers tables
 
