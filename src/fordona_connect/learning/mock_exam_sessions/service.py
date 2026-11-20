@@ -9,7 +9,9 @@ Rules ported from the engine's ``MockExamService``:
 
 * A free learner has ``free_attempts`` starts in total (a lifetime count, used at
   start). A subscribed learner has no limit. Resuming an open session, or replaying
-  a start's ``requestId``, uses nothing.
+  a start's ``requestId``, uses nothing. If fordona-engine cannot say whether the
+  learner is subscribed, start refuses (503) rather than spend a free attempt on a
+  guess; every other read fails closed.
 * The pass mark is ``pass_percent`` of the questions, rounded down.
 * A deadline (``time_limit_seconds`` after start) is enforced at submit, with
   ``submit_grace_seconds`` of network slack. Past that the session is ``TIMED_OUT``.
@@ -37,7 +39,7 @@ from fordona_connect.core.errors import AppError
 from fordona_connect.core.logging import get_logger
 from fordona_connect.learning.content.models import ContentQuestionRevision
 from fordona_connect.learning.content.snapshot import SnapshotProvider
-from fordona_connect.learning.entitlement import SubscriptionSource
+from fordona_connect.learning.entitlement import VerifiedSubscriptionSource
 from fordona_connect.learning.errors import (
     ItemNotFoundError,
     MockExamAttemptsExhaustedError,
@@ -87,7 +89,7 @@ class MockExamSessionService:
         self,
         sessionmaker: async_sessionmaker[AsyncSession],
         snapshots: SnapshotProvider,
-        subscriptions: SubscriptionSource,
+        subscriptions: VerifiedSubscriptionSource,
         *,
         rules: MockExamRules | None = None,
         now: Callable[[], datetime] = _utc_now,
@@ -165,7 +167,9 @@ class MockExamSessionService:
         by_id = {q.question_id: q for q in questions[: exam.question_count]}
         order = self._shuffle(list(by_id))
 
-        subscribed = await self._is_subscribed(learner_id)
+        # Verified, not failed closed: guessing "not subscribed" would spend a paying
+        # learner's free attempt, which never comes back. Raises a retryable 503 instead.
+        subscribed = await self._subscriptions.verified_is_subscribed(learner_id)
         session_id = uuid.uuid4()
         started_at = self._now()
         time_limit = self._rules.time_limit_seconds or None

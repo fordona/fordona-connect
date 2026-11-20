@@ -7,6 +7,7 @@ from fakeredis import FakeAsyncRedis, FakeServer
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from fordona_connect.clients.engine.client import EngineClient
+from fordona_connect.learning.errors import SubscriptionUnavailableError
 from fordona_connect.learning.platform import (
     PlatformClient,
     PlatformEventConsumer,
@@ -46,6 +47,36 @@ async def test_learner_context_is_cached_and_fails_closed() -> None:
             await platform.forget("kp_1")
             await platform.is_subscribed("kp_1")
             assert route.call_count == 2
+
+
+async def test_verified_check_raises_instead_of_failing_closed() -> None:
+    redis = FakeAsyncRedis(server=FakeServer())
+    async with httpx.AsyncClient(base_url=ENGINE) as http:
+        platform = PlatformClient(
+            EngineClient(http, internal_token="t", default_timeout=1.0), redis, ttl_seconds=60
+        )
+        with respx.mock(assert_all_called=False) as router:
+            router.get(f"{ENGINE}/internal/learning/v1/learners/kp_2").respond(503)
+
+            with pytest.raises(SubscriptionUnavailableError):
+                await platform.verified_is_subscribed("kp_2")
+
+
+async def test_verified_check_uses_a_cached_answer_while_the_engine_is_down() -> None:
+    redis = FakeAsyncRedis(server=FakeServer())
+    async with httpx.AsyncClient(base_url=ENGINE) as http:
+        platform = PlatformClient(
+            EngineClient(http, internal_token="t", default_timeout=1.0), redis, ttl_seconds=60
+        )
+        with respx.mock(assert_all_called=False) as router:
+            route = router.get(f"{ENGINE}/internal/learning/v1/learners/kp_1")
+            route.respond(
+                json=payload({"userId": 1, "firstName": "A", "lastName": "B", "subscribed": True})
+            )
+            await platform.is_subscribed("kp_1")
+            route.respond(503)
+
+            assert await platform.verified_is_subscribed("kp_1") is True
 
 
 async def test_events_clear_caches_delete_learners_and_advance_the_cursor(

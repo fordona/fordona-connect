@@ -3054,3 +3054,18 @@ The diagnostics and reports log for `BFF_IMPLEMENTATION_PROGRESS.md`:
 - **Checks:** 540 passed, 56 skipped (pytest, integration included); ruff check and format clean;
   mypy (`src`) clean.
 
+### 2026-11-20 · Owner-reported · Engine outage spent paying learners' free mock exam attempts
+
+- **Status:** DONE (not a tracker task)
+- **Bug:** `PlatformClient` fails closed, so with fordona-engine unreachable (and nothing cached)
+  every learner looked unsubscribed. Starting a mock exam then recorded a paying learner's sitting
+  as a free attempt (a lifetime count, never refunded) or, with none left, refused with 403
+  `THEORY_EXAM_ATTEMPTS_EXHAUSTED`.
+- **Fix:** `PlatformClient.verified_is_subscribed` (and `learner(..., verified=True)`) raises
+  `SubscriptionUnavailableError` (503 `SUBSCRIPTION_UNAVAILABLE`) instead of guessing; a cached
+  answer is still used. Mock exam start uses it before writing anything, so a retry with the same
+  `requestId` after recovery starts cleanly. Resuming an open session, submitting and every screen
+  keep failing closed (nothing is spent there). Logged as `learner_context_unavailable_refusing`.
+- **Checks:** 545 passed, 56 skipped (pytest, integration included); the one error in that run
+  was the Docker image build test, which passed on rerun. Ruff check and format clean; mypy clean.
+

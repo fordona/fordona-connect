@@ -29,6 +29,7 @@ from fordona_connect.core.errors import AppError
 from fordona_connect.core.logging import get_logger
 from fordona_connect.db.models import Base
 from fordona_connect.learning.attempts.models import AttemptItem, LessonAttempt, Mistake
+from fordona_connect.learning.errors import SubscriptionUnavailableError
 from fordona_connect.learning.mock_exam_sessions.models import MockExamItem, MockExamSession
 from fordona_connect.learning.progress.models import (
     LearnerActivityDay,
@@ -79,7 +80,10 @@ class PlatformClient:
         self._cache = cache
         self._ttl = ttl_seconds
 
-    async def learner(self, learner_id: str) -> LearnerContext:
+    async def learner(self, learner_id: str, *, verified: bool = False) -> LearnerContext:
+        """The learner's context, cached. If fordona-engine cannot answer and nothing is
+        cached, fail closed (not subscribed), or with ``verified`` raise
+        ``SubscriptionUnavailableError``."""
         key = _CACHE_PREFIX + learner_id
         try:
             cached = await self._cache.get(key)
@@ -93,6 +97,9 @@ class PlatformClient:
                 f"/internal/learning/v1/learners/{learner_id}"
             )
         except AppError as exc:
+            if verified:
+                log.error("learner_context_unavailable_refusing", error=repr(exc))
+                raise SubscriptionUnavailableError() from exc
             # Error, not warning: every learner looks unsubscribed until this recovers, so
             # paying learners are locked out. Alert on this event.
             log.error("learner_context_unavailable_failing_closed", error=repr(exc))
@@ -119,6 +126,10 @@ class PlatformClient:
     # SubscriptionSource
     async def is_subscribed(self, learner_id: str) -> bool:
         return (await self.learner(learner_id)).subscribed
+
+    # VerifiedSubscriptionSource
+    async def verified_is_subscribed(self, learner_id: str) -> bool:
+        return (await self.learner(learner_id, verified=True)).subscribed
 
     # ProfileSource
     async def profile(self, learner_id: str) -> LearnerProfile:

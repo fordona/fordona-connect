@@ -1,6 +1,11 @@
 """Learning errors, with the engine's error codes so clients see no change."""
 
-from fordona_connect.core.errors import AppError, TheoryLessonLockedError, TheoryModuleLockedError
+from fordona_connect.core.errors import (
+    AppError,
+    ErrorCode,
+    TheoryLessonLockedError,
+    TheoryModuleLockedError,
+)
 
 __all__ = [
     "AttemptNotFoundError",
@@ -17,6 +22,7 @@ __all__ = [
     "PhaseIncompleteError",
     "RequestIdConflictError",
     "ResponseConflictError",
+    "SubscriptionUnavailableError",
     "TheoryLessonLockedError",
     "TheoryModuleLockedError",
 ]
@@ -110,3 +116,16 @@ class MockExamNotSubmittedError(AppError):
     status_code = 409
     error_code = "THEORY_MOCK_EXAM_NOT_SUBMITTED"
     type_path = "theory/mock-exam-not-submitted"
+
+
+class SubscriptionUnavailableError(AppError):
+    """fordona-engine could not say whether the learner is subscribed.
+
+    Raised only where guessing "not subscribed" would cost the learner something that
+    does not come back (a free mock exam attempt). Screens fail closed instead.
+    """
+
+    status_code = 503
+    error_code = ErrorCode.SUBSCRIPTION_UNAVAILABLE
+    type_path = "platform/subscription-unavailable"
+    default_detail = "Your subscription could not be checked. Please try again shortly."

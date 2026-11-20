@@ -10,6 +10,7 @@ from fordona_connect.learning.errors import (
     MockExamNotSubmittedError,
     MockExamSessionNotFoundError,
     MockExamTimedOutError,
+    SubscriptionUnavailableError,
 )
 from tests.conftest import BOOST, Harness
 from tests.factories import mock_exam_result_payload, mock_exam_session_payload, question_payload
@@ -247,3 +248,16 @@ async def test_start_mock_exam_without_token_is_401(harness: Harness) -> None:
     )
 
     assert response.status_code == 401
+
+
+async def test_start_mock_exam_when_the_subscription_cannot_be_checked_is_503(
+    harness: Harness,
+) -> None:
+    harness.theory.set("start_mock_exam", SubscriptionUnavailableError())
+
+    response = await harness.client.post(
+        "/v1/mock-exams/1/sessions", headers=harness.auth(), json={"requestId": str(uuid.uuid4())}
+    )
+
+    assert response.status_code == 503
+    assert response.json()["errorCode"] == "SUBSCRIPTION_UNAVAILABLE"

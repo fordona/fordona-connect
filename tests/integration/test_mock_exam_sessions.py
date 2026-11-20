@@ -27,6 +27,7 @@ from fordona_connect.learning.errors import (
     MockExamUnavailableError,
     OptionInvalidError,
     RequestIdConflictError,
+    SubscriptionUnavailableError,
 )
 from fordona_connect.learning.mock_exam_sessions.models import MockExamItem, MockExamSession
 from fordona_connect.learning.mock_exam_sessions.scoring import MockExamRules
@@ -48,10 +49,19 @@ RULES = MockExamRules(
 
 
 class Subscriptions:
-    def __init__(self, subscribed: set[str] | None = None) -> None:
+    """``unavailable`` stands in for an unreachable fordona-engine: the plain check fails
+    closed (as ``PlatformClient`` does), the verified one raises."""
+
+    def __init__(self, subscribed: set[str] | None = None, *, unavailable: bool = False) -> None:
         self.subscribed = subscribed or set()
+        self.unavailable = unavailable
 
     async def is_subscribed(self, learner_id: str) -> bool:
+        return False if self.unavailable else learner_id in self.subscribed
+
+    async def verified_is_subscribed(self, learner_id: str) -> bool:
+        if self.unavailable:
+            raise SubscriptionUnavailableError()
         return learner_id in self.subscribed
 
 
@@ -131,12 +141,13 @@ def service(
     clock: Clock,
     *,
     subscribed: set[str] | None = None,
+    unavailable: bool = False,
     rules: MockExamRules = RULES,
 ) -> MockExamSessionService:
     return MockExamSessionService(
         sessions,
         SnapshotProvider(sessions, freshness_seconds=0),
-        Subscriptions(subscribed),
+        Subscriptions(subscribed, unavailable=unavailable),
         rules=rules,
         now=clock,
         shuffle=keep_order,
@@ -252,6 +263,49 @@ async def test_attempts_used_while_free_still_count_after_subscribing_lapses(
 
     assert access.level == "FREE"
     assert access.mock_exams.free_attempts_remaining == 2
+
+
+async def test_start_refuses_when_the_subscription_cannot_be_checked(sessions, clock) -> None:  # type: ignore[no-untyped-def]
+    svc = service(sessions, clock, subscribed={LEARNER}, unavailable=True)
+
+    with pytest.raises(SubscriptionUnavailableError):
+        await svc.start(LEARNER, EXAM, uuid.uuid4())
+
+    async with sessions() as session:
+        count = await session.scalar(select(func.count()).select_from(MockExamSession))
+    assert count == 0  # nothing started, no free attempt spent
+
+
+async def test_retrying_the_start_after_the_engine_recovers_spends_nothing(sessions, clock) -> None:  # type: ignore[no-untyped-def]
+    request_id = uuid.uuid4()
+    with pytest.raises(SubscriptionUnavailableError):
+        await service(sessions, clock, subscribed={LEARNER}, unavailable=True).start(
+            LEARNER, EXAM, request_id
+        )
+
+    out = await service(sessions, clock, subscribed={LEARNER}).start(LEARNER, EXAM, request_id)
+
+    assert out.free_attempts_remaining is None
+    async with sessions() as session:
+        free = await session.scalar(
+            select(func.count())
+            .select_from(MockExamSession)
+            .where(MockExamSession.free_attempt.is_(True))
+        )
+    assert free == 0
+
+
+async def test_an_open_session_resumes_while_the_subscription_cannot_be_checked(
+    sessions, clock
+) -> None:  # type: ignore[no-untyped-def]
+    started = await service(sessions, clock).start(LEARNER, EXAM, uuid.uuid4())
+    svc = service(sessions, clock, unavailable=True)
+
+    resumed = await svc.start(LEARNER, EXAM, uuid.uuid4())
+    fetched = await svc.get(LEARNER, uuid.UUID(started.session_id))
+
+    assert resumed.session_id == started.session_id
+    assert fetched.status == "IN_PROGRESS"
 
 
 # --- submit --------------------------------------------------------------------------

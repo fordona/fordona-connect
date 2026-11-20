@@ -107,7 +107,9 @@ counts (`N passed, M skipped`), never "tests pass".
    learner is subscribed (`GET /internal/learning/v1/learners/{kindeSubject}`, cached, and the
    `subscription.changed` event). Connect turns that fact into locks and allowances (free unit,
    free milestone, free mock exam attempts) and shows the result in the home `access` block. It
-   **fails closed**: no answer from the engine means not subscribed. For a locked lesson connect
+   **fails closed**: no answer from the engine means not subscribed, except where that guess
+   would spend something the learner cannot get back (a free mock exam attempt): there, use
+   `verified_is_subscribed` and refuse with a retryable 503. For a locked lesson connect
    fetches **no** theory or bodies (paid content never leaves the server). Never add a second
    source of "is this learner subscribed" in connect.
 3. **Never expose question ids, revisions or template ids** in public attempt/item responses (plan

@@ -15,6 +15,13 @@ class SubscriptionSource(Protocol):
     async def is_subscribed(self, learner_id: str) -> bool: ...
 
 
+class VerifiedSubscriptionSource(SubscriptionSource, Protocol):
+    async def verified_is_subscribed(self, learner_id: str) -> bool:
+        """Like ``is_subscribed``, but raises ``SubscriptionUnavailableError`` when
+        fordona-engine cannot answer, instead of failing closed."""
+        ...
+
+
 class AccessSource(Protocol):
     """A learner's access level and allowances, as the home screens show them."""
 

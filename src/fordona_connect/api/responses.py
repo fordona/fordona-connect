@@ -103,6 +103,10 @@ MOCK_EXAM_START_ERRORS: dict[int | str, dict[str, Any]] = {
     422: _problem("Invalid request body."),
     **_RATE_LIMIT_ERROR,
     **_UPSTREAM_ERRORS,
+    503: _problem(
+        "SUBSCRIPTION_UNAVAILABLE: the subscription could not be checked; nothing was "
+        "started or spent. Retry with the same requestId."
+    ),
 }
 
 MOCK_EXAM_SESSION_ERRORS: dict[int | str, dict[str, Any]] = {
